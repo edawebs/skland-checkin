@@ -122,12 +122,10 @@ def get_cred(token: str) -> tuple[str, str]:
     Token → Grant Code → Cred
     返回 (cred, sign_token)
     """
-    # Step 1: 获取 OAuth2 授权代码
-    data = {"appCode": APP_CODE, "token": token, "type": 0}
+    # Step 1: 获取 OAuth2 授权代码（必须用 json=）
     grant_resp = requests.post(
         "https://as.hypergryph.com/user/oauth2/v2/grant",
-        headers=LOGIN_HEADER,
-        data=data,
+        json={"appCode": APP_CODE, "token": token, "type": 0},
         timeout=30,
     ).json()
 
@@ -136,11 +134,10 @@ def get_cred(token: str) -> tuple[str, str]:
 
     code = grant_resp["data"]["code"]
 
-    # Step 2: 用授权代码换取 Cred
+    # Step 2: 用授权代码换取 Cred（必须用 json=）
     cred_resp = requests.post(
         "https://zonai.skland.com/api/v1/user/auth/generate_cred_by_code",
-        headers=LOGIN_HEADER,
-        data={"code": code, "kind": 1},
+        json={"code": code, "kind": 1},
         timeout=30,
     ).json()
 
