@@ -1,0 +1,17 @@
+{
+    "accounts": [
+        {
+            "name": "大号",
+            "enabled": true,
+            "token": "从 https://web-api.skland.com/account/info/hg 获取的 content 字段",
+            "games": ["arknights", "endfield"]
+        },
+        {
+            "name": "小号",
+            "enabled": true,
+            "token": "从 https://web-api.skland.com/account/info/hg 获取的 content 字段",
+            "games": ["arknights"]
+        }
+    ],
+    "push": {}
+}

@@ -1,0 +1,40 @@
+# 补签 — 每天北京时间 10:10 执行
+name: "补签 10:10"
+
+on:
+  schedule:
+    - cron: "10 2 * * *"   # UTC 02:10 = 北京时间 10:10
+  workflow_dispatch:
+
+jobs:
+  retry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 安装依赖
+        run: pip install requests
+
+      - name: 下载上午签到状态
+        uses: actions/download-artifact@v4
+        with:
+          name: checkin-state
+        continue-on-error: true
+
+      - name: 补签
+        env:
+          MIYOUSHE_CONFIG: ${{ secrets.SKLAND_CONFIG }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_TO: ${{ secrets.SMTP_TO }}
+        run: python main.py --mode retry

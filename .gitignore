@@ -1,0 +1,20 @@
+# 敏感文件
+config.json
+.checkin_state.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# 日志
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# 系统
+.DS_Store
+Thumbs.db
