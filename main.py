@@ -35,8 +35,8 @@ STATE_FILE = BASE_DIR / ".checkin_state.json"
 # ═══════════════════════════════════════════════════════════
 
 def load_config():
-    if "MIYOUSHE_CONFIG" in os.environ:
-        return json.loads(os.environ["MIYOUSHE_CONFIG"])
+    if "SKLAND_CONFIG" in os.environ:
+        return json.loads(os.environ["SKLAND_CONFIG"])
     if CONFIG_FILE.exists():
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -48,72 +48,72 @@ def load_config():
 # 森空岛 API 核心
 # ═══════════════════════════════════════════════════════════
 
-SKLAND_HEADERS = {
-    "User-Agent": "Skland/1.21.0 (com.hypergryph.skland; build:102100065; iOS 17.6.0; ) Alamofire/5.7.1",
+# 旧版请求头 — 新版有验参，旧版可直接绕过
+LOGIN_HEADER = {
+    "User-Agent": "Skland/1.0.1 (com.hypergryph.skland; build:100001014; Android 31; ) Okhttp/4.11.0",
     "Accept-Encoding": "gzip",
     "Connection": "close",
-    "Content-Type": "application/json",
 }
+
+# API 请求头基础（cred 在外面填充）
+API_HEADER = {
+    "cred": "",
+    "User-Agent": "Skland/1.0.1 (com.hypergryph.skland; build:100001014; Android 31; ) Okhttp/4.11.0",
+    "Accept-Encoding": "gzip",
+    "Connection": "close",
+}
+
+# 签名头 — 四个字段，顺序必须保持（platform, timestamp, dId, vName）
+SIGN_HEADER_TEMPLATE = {"platform": "1", "timestamp": "", "dId": "de9759a5afaa634f", "vName": "1.0.1"}
 
 APP_CODE = "4ca99fa6b56cc2ba"
 
 
-def _generate_sign(token: str, path: str, body: dict | None) -> tuple[str, dict]:
-    """生成森空岛请求签名"""
-    # timestamp 取毫秒前10位 = 秒级时间戳减2秒
-    timestamp = str(int(time.time() * 1000 - 2000))[:10]
-    vName = "1.21.0"
+def _generate_sign(token: str, path: str, body_or_query: str) -> tuple[str, dict]:
+    """生成森空岛请求签名
 
-    header_dict = {
-        "platform": "1",
-        "timestamp": timestamp,
-        "dId": "",
-        "vName": vName,
-    }
-
-    # 拼接签名字符串: path + body + timestamp + header_json
-    header_json = json.dumps(header_dict, separators=(",", ":"))
-    if body:
-        body_json = json.dumps(body, separators=(",", ":"))
-        sign_str = path + body_json + timestamp + header_json
-    else:
-        sign_str = path + timestamp + header_json
-
-    hmac_result = hmac.new(
-        token.encode("utf-8"),
-        sign_str.encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-    sign = hashlib.md5(hmac_result.encode("utf-8")).hexdigest()
-
-    return sign, header_dict
+    签名算法: HMAC-SHA256(path + body_or_query + timestamp + header_json, token) → MD5
+    - path: API 路径（不含域名）
+    - body_or_query: GET 时用 query string, POST 时用 json.dumps(body)
+    """
+    token_bytes = token.encode("utf-8")
+    timestamp = str(int(time.time()) - 2)
+    header_ca = SIGN_HEADER_TEMPLATE.copy()
+    header_ca["timestamp"] = timestamp
+    header_ca_str = json.dumps(header_ca, separators=(",", ":"))
+    sign_str = path + body_or_query + timestamp + header_ca_str
+    hex_s = hmac.new(token_bytes, sign_str.encode("utf-8"), hashlib.sha256).hexdigest()
+    md5 = hashlib.md5(hex_s.encode("utf-8")).hexdigest()
+    return md5, header_ca
 
 
-def _api_get(cred: str, sign_token: str, path: str) -> dict:
+def _api_get(cred: str, sign_token: str, path: str, query: str = "") -> dict:
     """带签名的 GET 请求"""
-    sign, headers = _generate_sign(sign_token, path, None)
+    sign, header_ca = _generate_sign(sign_token, path, query)
     url = f"https://zonai.skland.com{path}"
-    req_headers = {
-        **SKLAND_HEADERS,
-        "cred": cred,
-        **headers,
-        "sign": sign,
-    }
-    r = requests.get(url, headers=req_headers, timeout=30)
+    if query:
+        url += f"?{query}"
+    headers = API_HEADER.copy()
+    headers["cred"] = cred
+    headers["sign"] = sign
+    for k, v in header_ca.items():
+        headers[k] = v
+    r = requests.get(url, headers=headers, timeout=30)
     return r.json()
 
 
 def _api_post(cred: str, sign_token: str, path: str, body: dict) -> dict:
-    """带签名的 POST 请求"""
-    sign, headers = _generate_sign(sign_token, path, body)
+    """带签名的 POST 请求（form-encoded）"""
+    body_json = json.dumps(body, separators=(",", ":"))
+    sign, header_ca = _generate_sign(sign_token, path, body_json)
     url = f"https://zonai.skland.com{path}"
-    req_headers = {
-        **SKLAND_HEADERS,
-        "cred": cred,
-        **headers,
-        "sign": sign,
-    }
-    r = requests.post(url, headers=req_headers, json=body, timeout=30)
+    headers = API_HEADER.copy()
+    headers["cred"] = cred
+    headers["sign"] = sign
+    for k, v in header_ca.items():
+        headers[k] = v
+    # CRITICAL: 使用 data= 而非 json=，否则签名校验失败
+    r = requests.post(url, headers=headers, data=body, timeout=30)
     return r.json()
 
 
@@ -123,10 +123,11 @@ def get_cred(token: str) -> tuple[str, str]:
     返回 (cred, sign_token)
     """
     # Step 1: 获取 OAuth2 授权代码
+    data = {"appCode": APP_CODE, "token": token, "type": 0}
     grant_resp = requests.post(
         "https://as.hypergryph.com/user/oauth2/v2/grant",
-        json={"token": token, "appCode": APP_CODE, "type": 0},
-        headers={"Content-Type": "application/json"},
+        headers=LOGIN_HEADER,
+        data=data,
         timeout=30,
     ).json()
 
@@ -135,21 +136,11 @@ def get_cred(token: str) -> tuple[str, str]:
 
     code = grant_resp["data"]["code"]
 
-    # Step 2: 用授权代码换取 Cred（使用 web 端点）
-    timestamp = str(int(time.time() * 1000))[:10]
+    # Step 2: 用授权代码换取 Cred
     cred_resp = requests.post(
-        "https://zonai.skland.com/web/v1/user/auth/generate_cred_by_code",
-        json={"kind": 1, "code": code},
-        headers={
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
-            "Referer": "https://www.skland.com/",
-            "Origin": "https://www.skland.com",
-            "dId": "",
-            "platform": "3",
-            "timestamp": timestamp,
-            "vName": "1.0.0",
-        },
+        "https://zonai.skland.com/api/v1/user/auth/generate_cred_by_code",
+        headers=LOGIN_HEADER,
+        data={"code": code, "kind": 1},
         timeout=30,
     ).json()
 
@@ -183,22 +174,12 @@ def get_bindings(cred: str, sign_token: str) -> list[dict]:
 
 
 def do_attendance(cred: str, sign_token: str, uid: str, game_id: str) -> dict:
-    """执行签到（先检查是否已签，再 POST）"""
+    """执行签到 — 先 GET 检查今日状态，未签再 POST"""
     import urllib.parse
 
     # Step 1: GET 查询今日签到记录
     query = urllib.parse.urlencode({"uid": uid, "gameId": game_id})
-    path_with_query = f"/api/v1/game/attendance?{query}"
-    sign, headers = _generate_sign(sign_token, path_with_query, None)
-    url = f"https://zonai.skland.com{path_with_query}"
-    req_headers = {
-        **SKLAND_HEADERS,
-        "cred": cred,
-        **headers,
-        "sign": sign,
-    }
-    r = requests.get(url, headers=req_headers, timeout=30)
-    record_data = r.json()
+    record_data = _api_get(cred, sign_token, "/api/v1/game/attendance", query)
 
     # 检查今日是否已签到
     if record_data.get("code") == 0:
