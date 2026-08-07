@@ -106,8 +106,8 @@ def _api_get(cred: str, sign_token: str, path: str, query: str = "") -> dict:
 
 def _api_post(cred: str, sign_token: str, path: str, body: dict) -> dict:
     """带签名的 POST 请求（form-encoded body）"""
-    # 签名用 JSON 字符串，请求体用 form-encoded
-    body_json = json.dumps(body, separators=(",", ":"))
+    # 签名用 json.dumps 默认格式（有空格），请求体用 form-encoded
+    body_json = json.dumps(body)
     sign, header_ca = _generate_sign(sign_token, path, body_json)
     url = f"https://zonai.skland.com{path}"
     headers = API_HEADER.copy()
