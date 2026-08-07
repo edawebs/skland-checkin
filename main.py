@@ -348,15 +348,15 @@ def main():
         print(f"[{today}] 🚀 主力签到开始")
         lines = do_checkin(config)
         save_state(lines)
-        # 每行打印
         output = "\n".join(lines)
         print(output)
 
-        # 发送邮件通知（始终发送，包含结果）
-        send_mail(
-            f"森空岛签到结果 {today}",
-            f"签到时间: {today} {time.strftime('%H:%M:%S')}\n\n{output}",
-        )
+        # 只在异常时发邮件
+        if "❌" in output:
+            send_mail(
+                f"⚠️ 森空岛签到异常 {today}",
+                f"签到时间: {today} {time.strftime('%H:%M:%S')}\n\n{output}",
+            )
 
     elif args.mode == "retry":
         state = load_state()
@@ -368,10 +368,12 @@ def main():
                 save_state(lines)
                 output = "\n".join(lines)
                 print(output)
-                send_mail(
-                    f"森空岛补签结果 {today}",
-                    f"补签时间: {today} {time.strftime('%H:%M:%S')}\n\n{output}",
-                )
+                # 补签后仍有失败才发邮件
+                if "❌" in output:
+                    send_mail(
+                        f"⚠️ 森空岛补签异常 {today}",
+                        f"补签时间: {today} {time.strftime('%H:%M:%S')}\n\n{output}",
+                    )
             else:
                 print(f"[{today}] ✅ 上午签到全部成功，无需补签")
         else:
@@ -380,6 +382,12 @@ def main():
             save_state(lines)
             output = "\n".join(lines)
             print(output)
+            # 补签后有失败才发邮件
+            if "❌" in output:
+                send_mail(
+                    f"⚠️ 森空岛补签异常 {today}",
+                    f"补签时间: {today} {time.strftime('%H:%M:%S')}\n\n{output}",
+                )
 
     elif args.mode == "check":
         state = load_state()
