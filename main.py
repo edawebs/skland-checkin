@@ -66,7 +66,13 @@ API_HEADER = {
 }
 
 # 签名头 — 四个字段，顺序必须保持（platform, timestamp, dId, vName）
-SIGN_HEADER_TEMPLATE = {"platform": "1", "timestamp": "", "dId": "de9759a5afaa634f", "vName": "1.0.1"}
+SIGN_HEADER_TEMPLATE = {"platform": "", "timestamp": "", "dId": "", "vName": ""}
+
+# 不同游戏的签到 API 路径不同
+GAME_ATTENDANCE = {
+    "arknights": "/api/v1/game/attendance",
+    "endfield": "/api/v1/game/endfield/attendance",
+}
 
 APP_CODE = "4ca99fa6b56cc2ba"
 
@@ -105,8 +111,7 @@ def _api_get(cred: str, sign_token: str, path: str, query: str = "") -> dict:
 
 
 def _api_post(cred: str, sign_token: str, path: str, body: dict) -> dict:
-    """带签名的 POST 请求（form-encoded body）"""
-    # 签名用 json.dumps 默认格式（有空格），请求体用 form-encoded
+    """带签名的 POST 请求（JSON body）"""
     body_json = json.dumps(body)
     sign, header_ca = _generate_sign(sign_token, path, body_json)
     url = f"https://zonai.skland.com{path}"
@@ -115,7 +120,7 @@ def _api_post(cred: str, sign_token: str, path: str, body: dict) -> dict:
     headers["sign"] = sign
     for k, v in header_ca.items():
         headers[k] = v
-    r = requests.post(url, headers=headers, data=body, timeout=30)
+    r = requests.post(url, headers=headers, json=body, timeout=30)
     return r.json()
 
 
@@ -172,23 +177,12 @@ def get_bindings(cred: str, sign_token: str) -> list[dict]:
     return bindings
 
 
-def do_attendance(cred: str, sign_token: str, uid: str, game_id: str) -> dict:
-    """执行签到 — 先 GET 检查今日状态，未签再 POST"""
-    # Step 1: GET 查询今日签到记录
-    query = urllib.parse.urlencode({"uid": uid, "gameId": game_id})
-    record_data = _api_get(cred, sign_token, "/api/v1/game/attendance", query)
-
-    # 检查今日是否已签到
-    if record_data.get("code") == 0:
-        records = record_data.get("data", {}).get("records", [])
-        today_start = int(time.mktime(time.strptime(time.strftime("%Y-%m-%d"), "%Y-%m-%d")))
-        for rec in records:
-            if int(rec.get("ts", 0)) >= today_start:
-                return {"code": 10001, "message": "今日已签到"}
-
-    # Step 2: POST 签到
+def do_attendance(cred: str, sign_token: str, uid: str, game_id: str, app_code: str) -> dict:
+    """执行签到"""
+    # 不同游戏用不同 API 路径
+    path = GAME_ATTENDANCE.get(app_code, "/api/v1/game/attendance")
     body = {"uid": uid, "gameId": game_id}
-    data = _api_post(cred, sign_token, "/api/v1/game/attendance", body)
+    data = _api_post(cred, sign_token, path, body)
     return data
 
 
@@ -295,7 +289,7 @@ def do_checkin(config: dict) -> list[str]:
                 continue
 
             try:
-                result = do_attendance(cred, sign_token, b["uid"], b["gameId"])
+                result = do_attendance(cred, sign_token, b["uid"], b["gameId"], app_code)
                 code = result.get("code", -1)
 
                 if code == 0:
