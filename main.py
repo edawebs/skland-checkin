@@ -17,7 +17,9 @@ import os
 import smtplib
 import sys
 import time
+import traceback
 import uuid
+import urllib.parse
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
@@ -64,7 +66,7 @@ API_HEADER = {
 }
 
 # 签名头 — 四个字段，顺序必须保持（platform, timestamp, dId, vName）
-SIGN_HEADER_TEMPLATE = {"platform": "1", "timestamp": "", "dId": "de9759a5afaa634f", "vName": "1.0.1"}
+SIGN_HEADER_TEMPLATE = {"platform": "", "timestamp": "", "dId": "", "vName": ""}
 
 APP_CODE = "4ca99fa6b56cc2ba"
 
@@ -103,7 +105,7 @@ def _api_get(cred: str, sign_token: str, path: str, query: str = "") -> dict:
 
 
 def _api_post(cred: str, sign_token: str, path: str, body: dict) -> dict:
-    """带签名的 POST 请求（form-encoded）"""
+    """带签名的 POST 请求（JSON body）"""
     body_json = json.dumps(body, separators=(",", ":"))
     sign, header_ca = _generate_sign(sign_token, path, body_json)
     url = f"https://zonai.skland.com{path}"
@@ -112,8 +114,7 @@ def _api_post(cred: str, sign_token: str, path: str, body: dict) -> dict:
     headers["sign"] = sign
     for k, v in header_ca.items():
         headers[k] = v
-    # CRITICAL: 使用 data= 而非 json=，否则签名校验失败
-    r = requests.post(url, headers=headers, data=body, timeout=30)
+    r = requests.post(url, headers=headers, json=body, timeout=30)
     return r.json()
 
 
@@ -172,8 +173,6 @@ def get_bindings(cred: str, sign_token: str) -> list[dict]:
 
 def do_attendance(cred: str, sign_token: str, uid: str, game_id: str) -> dict:
     """执行签到 — 先 GET 检查今日状态，未签再 POST"""
-    import urllib.parse
-
     # Step 1: GET 查询今日签到记录
     query = urllib.parse.urlencode({"uid": uid, "gameId": game_id})
     record_data = _api_get(cred, sign_token, "/api/v1/game/attendance", query)
@@ -312,8 +311,10 @@ def do_checkin(config: dict) -> list[str]:
                 else:
                     msg = result.get("message", str(result))
                     lines.append(f"  ❌ [{game_name}] {b['nickName']} → {msg}")
+                    lines.append(f"     API 返回: {json.dumps(result, ensure_ascii=False)}")
             except Exception as e:
                 lines.append(f"  ❌ [{game_name}] {b['nickName']} → 异常: {e}")
+                lines.append(f"     {traceback.format_exc().strip().split(chr(10))[-1]}")
 
         if not signed_any:
             lines.append(f"  ⚠️ 未签到任何游戏")
