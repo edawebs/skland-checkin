@@ -66,7 +66,7 @@ API_HEADER = {
 }
 
 # 签名头 — 四个字段，顺序必须保持（platform, timestamp, dId, vName）
-SIGN_HEADER_TEMPLATE = {"platform": "", "timestamp": "", "dId": "", "vName": ""}
+SIGN_HEADER_TEMPLATE = {"platform": "1", "timestamp": "", "dId": "de9759a5afaa634f", "vName": "1.0.1"}
 
 APP_CODE = "4ca99fa6b56cc2ba"
 
@@ -105,7 +105,8 @@ def _api_get(cred: str, sign_token: str, path: str, query: str = "") -> dict:
 
 
 def _api_post(cred: str, sign_token: str, path: str, body: dict) -> dict:
-    """带签名的 POST 请求（JSON body）"""
+    """带签名的 POST 请求（form-encoded body）"""
+    # 签名用 JSON 字符串，请求体用 form-encoded
     body_json = json.dumps(body, separators=(",", ":"))
     sign, header_ca = _generate_sign(sign_token, path, body_json)
     url = f"https://zonai.skland.com{path}"
@@ -114,7 +115,7 @@ def _api_post(cred: str, sign_token: str, path: str, body: dict) -> dict:
     headers["sign"] = sign
     for k, v in header_ca.items():
         headers[k] = v
-    r = requests.post(url, headers=headers, json=body, timeout=30)
+    r = requests.post(url, headers=headers, data=body, timeout=30)
     return r.json()
 
 
@@ -123,10 +124,11 @@ def get_cred(token: str) -> tuple[str, str]:
     Token → Grant Code → Cred
     返回 (cred, sign_token)
     """
-    # Step 1: 获取 OAuth2 授权代码（必须用 json=）
+    # Step 1: 获取 OAuth2 授权代码（用 data= form-encoded）
     grant_resp = requests.post(
         "https://as.hypergryph.com/user/oauth2/v2/grant",
-        json={"appCode": APP_CODE, "token": token, "type": 0},
+        headers=LOGIN_HEADER,
+        data={"appCode": APP_CODE, "token": token, "type": 0},
         timeout=30,
     ).json()
 
@@ -135,10 +137,11 @@ def get_cred(token: str) -> tuple[str, str]:
 
     code = grant_resp["data"]["code"]
 
-    # Step 2: 用授权代码换取 Cred（必须用 json=）
+    # Step 2: 用授权代码换取 Cred（用 data= form-encoded）
     cred_resp = requests.post(
         "https://zonai.skland.com/api/v1/user/auth/generate_cred_by_code",
-        json={"code": code, "kind": 1},
+        headers=LOGIN_HEADER,
+        data={"code": code, "kind": 1},
         timeout=30,
     ).json()
 
