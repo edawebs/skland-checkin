@@ -25,7 +25,7 @@ jobs:
 
       - name: 主力签到
         env:
-          MIYOUSHE_CONFIG: ${{ secrets.SKLAND_CONFIG }}
+          SKLAND_CONFIG: ${{ secrets.SKLAND_CONFIG }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
