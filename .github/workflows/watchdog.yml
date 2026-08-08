@@ -23,6 +23,12 @@ jobs:
       - name: 安装依赖
         run: pip install requests
 
+      - name: 下载上午签到状态
+        uses: actions/download-artifact@v4
+        with:
+          name: checkin-state
+        continue-on-error: true   # 上午签到未运行/上传失败时，看门狗会走"零签到"告警分支
+
       - name: 看门狗检查
         env:
           SKLAND_CONFIG: ${{ secrets.SKLAND_CONFIG }}
