@@ -69,9 +69,10 @@ API_HEADER = {
 SIGN_HEADER_TEMPLATE = {"platform": "", "timestamp": "", "dId": "", "vName": ""}
 
 # 不同游戏的签到 API 路径不同
+# 终末地: 必须用 /web/v1/ 前缀 + sk-game-role 请求头(3_{roleId}_{serverId})，POST 无 body
 GAME_ATTENDANCE = {
     "arknights": "/api/v1/game/attendance",
-    "endfield": "/api/v1/game/endfield/attendance",
+    "endfield": "/web/v1/game/endfield/attendance",
 }
 
 APP_CODE = "4ca99fa6b56cc2ba"
@@ -165,21 +166,56 @@ def get_bindings(cred: str, sign_token: str) -> list[dict]:
         app_code = game["appCode"]
         app_name = game.get("appName", app_code)
         for bind in game["bindingList"]:
-            if not bind.get("isDelete", False):
+            if bind.get("isDelete", False):
+                continue
+            base = {
+                "appCode": app_code,
+                "appName": app_name,
+                "channelName": bind.get("channelName", ""),
+            }
+            # 终末地: 真实角色信息在 roles 里（roleId/serverId/nickname），uid 只是账号标识
+            if app_code == "endfield" and bind.get("roles"):
+                for role in bind["roles"]:
+                    if role.get("isBanned"):
+                        continue
+                    bindings.append({
+                        **base,
+                        "uid": bind["uid"],
+                        "gameId": bind.get("channelMasterId", ""),
+                        "roleId": role.get("roleId", ""),
+                        "serverId": role.get("serverId", ""),
+                        "nickName": role.get("nickname", ""),
+                    })
+            else:
                 bindings.append({
-                    "appCode": app_code,
-                    "appName": app_name,
+                    **base,
                     "uid": bind["uid"],
-                    "gameId": bind["channelMasterId"],
+                    "gameId": bind.get("channelMasterId", ""),
+                    "roleId": "",
+                    "serverId": "",
                     "nickName": bind.get("nickName", ""),
-                    "channelName": bind.get("channelName", ""),
                 })
     return bindings
 
 
-def do_attendance(cred: str, sign_token: str, uid: str, game_id: str, app_code: str) -> dict:
+def do_attendance(cred: str, sign_token: str, uid: str, game_id: str, app_code: str,
+                  role_id: str = "", server_id: str = "") -> dict:
     """执行签到"""
-    # 不同游戏用不同 API 路径
+    # 终末地: /web/v1/ 路径 + POST 无 body + sk-game-role 请求头(3_{roleId}_{serverId})
+    if app_code == "endfield":
+        path = GAME_ATTENDANCE.get(app_code, "/web/v1/game/endfield/attendance")
+        sign, header_ca = _generate_sign(sign_token, path, "")
+        headers = API_HEADER.copy()
+        headers["cred"] = cred
+        headers["sign"] = sign
+        headers["Content-Type"] = "application/json"
+        headers["sk-game-role"] = f"3_{role_id}_{server_id}"
+        for k, v in header_ca.items():
+            headers[k] = v
+        r = requests.post(f"https://zonai.skland.com{path}", headers=headers, timeout=30)
+        return r.json()
+
+    # 方舟等: 原逻辑（json body）
     path = GAME_ATTENDANCE.get(app_code, "/api/v1/game/attendance")
     body = {"uid": uid, "gameId": game_id}
     data = _api_post(cred, sign_token, path, body)
@@ -288,16 +324,33 @@ def do_checkin(config: dict) -> list[str]:
                 lines.append(f"  - [{game_name}] {b['nickName']} ({b['channelName']}) → 跳过（未启用）")
                 continue
 
+            # 终末地签到必须拿到 roleId（真实角色ID），缺失则跳过
+            if app_code == "endfield" and not b.get("roleId"):
+                lines.append(f"  ⚠️ [{game_name}] {b['nickName'] or '(无角色数据)'} → 跳过（终末地角色信息缺失）")
+                continue
+
             try:
-                result = do_attendance(cred, sign_token, b["uid"], b["gameId"], app_code)
+                result = do_attendance(cred, sign_token, b["uid"], b["gameId"], app_code,
+                                       b.get("roleId", ""), b.get("serverId", ""))
                 code = result.get("code", -1)
 
                 if code == 0:
-                    awards = result.get("data", {}).get("awards", [])
+                    data = result.get("data", {}) or {}
+                    awards = data.get("awards") or []
+                    if not awards:
+                        # 终末地: 奖励在 awardIds + resourceInfoMap 里
+                        rim = data.get("resourceInfoMap", {})
+                        awards = [
+                            {"resource": {
+                                "name": rim.get(a.get("id", ""), {}).get("name", "?"),
+                                "count": rim.get(a.get("id", ""), {}).get("count", "?"),
+                            }}
+                            for a in data.get("awardIds", [])
+                        ]
                     award_desc = ", ".join(
                         f"{a.get('resource', {}).get('name', '?')}x{a.get('count', '?')}"
                         for a in awards
-                    ) if awards else "已签过"
+                    ) if awards else "签到成功"
                     lines.append(f"  ✅ [{game_name}] {b['nickName']} → {award_desc}")
                     signed_any = True
                 elif code == 10001:
