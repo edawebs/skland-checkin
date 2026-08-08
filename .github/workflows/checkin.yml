@@ -39,3 +39,4 @@ jobs:
           name: checkin-state
           path: .checkin_state.json
           retention-days: 1
+          include-hidden-files: true   # 状态文件是隐藏文件(点开头)，默认不上传，必须显式开启
