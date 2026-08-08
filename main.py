@@ -351,12 +351,11 @@ def main():
         output = "\n".join(lines)
         print(output)
 
-        # 只在异常时发邮件
-        if "❌" in output:
-            send_mail(
-                f"⚠️ 森空岛签到异常 {today}",
-                f"签到时间: {today} {time.strftime('%H:%M:%S')}\n\n{output}",
-            )
+        # 每次签到都发邮件报告（成功也提醒，对齐贴吧模式）
+        send_mail(
+            f"✅ 森空岛签到成功 {today}" if "❌" not in output else f"⚠️ 森空岛签到异常 {today}",
+            f"签到时间: {today} {time.strftime('%H:%M:%S')}\n\n{output}",
+        )
 
     elif args.mode == "retry":
         state = load_state()
@@ -368,12 +367,11 @@ def main():
                 save_state(lines)
                 output = "\n".join(lines)
                 print(output)
-                # 补签后仍有失败才发邮件
-                if "❌" in output:
-                    send_mail(
-                        f"⚠️ 森空岛补签异常 {today}",
-                        f"补签时间: {today} {time.strftime('%H:%M:%S')}\n\n{output}",
-                    )
+                # 补签结果也发邮件（成功/失败都提醒）
+                send_mail(
+                    f"✅ 森空岛补签成功 {today}" if "❌" not in output else f"⚠️ 森空岛补签异常 {today}",
+                    f"补签时间: {today} {time.strftime('%H:%M:%S')}\n\n{output}",
+                )
             else:
                 print(f"[{today}] ✅ 上午签到全部成功，无需补签")
         else:
@@ -382,12 +380,11 @@ def main():
             save_state(lines)
             output = "\n".join(lines)
             print(output)
-            # 补签后有失败才发邮件
-            if "❌" in output:
-                send_mail(
-                    f"⚠️ 森空岛补签异常 {today}",
-                    f"补签时间: {today} {time.strftime('%H:%M:%S')}\n\n{output}",
-                )
+            # 补签结果也发邮件（成功/失败都提醒）
+            send_mail(
+                f"✅ 森空岛补签成功 {today}" if "❌" not in output else f"⚠️ 森空岛补签异常 {today}",
+                f"补签时间: {today} {time.strftime('%H:%M:%S')}\n\n{output}",
+            )
 
     elif args.mode == "check":
         state = load_state()
