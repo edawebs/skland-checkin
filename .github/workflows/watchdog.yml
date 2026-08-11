@@ -40,6 +40,7 @@ jobs:
         with:
           name: checkin-state
           run-id: ${{ steps.last-checkin-run.outputs.run_id }}
+          github-token: ${{ github.token }}   # 跨 run 下载必须显式传 token，否则只找当前 run
         continue-on-error: true   # 主力签到未运行/上传失败时，看门狗会走"零签到"告警分支
 
       - name: 看门狗检查
