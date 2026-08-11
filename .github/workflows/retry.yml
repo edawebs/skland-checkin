@@ -23,11 +23,24 @@ jobs:
       - name: 安装依赖
         run: pip install requests
 
+      # download-artifact@v4 默认只下载"当前 run"的 artifact，
+      # 必须显式指定 run-id 才能拿到主力签到(08:20)上传的状态文件
+      - name: 获取最近一次主力签到 run_id
+        id: last-checkin-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RUN_ID=$(gh api "repos/${{ github.repository }}/actions/workflows/checkin.yml/runs?per_page=1" \
+            --jq '.workflow_runs[0].id')
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "查到的 run_id: $RUN_ID"
+
       - name: 下载上午签到状态
         uses: actions/download-artifact@v4
         with:
           name: checkin-state
-        continue-on-error: true
+          run-id: ${{ steps.last-checkin-run.outputs.run_id }}
+        continue-on-error: true   # 主力签到未运行/上传失败时，补签会走兜底分支
 
       - name: 补签
         env:
