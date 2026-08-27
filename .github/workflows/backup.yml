@@ -1,0 +1,36 @@
+# 兜底补签 — 每天北京时间 14:00 执行
+# 作用: 早上 08:20 主力签到若因 GitHub schedule 漏跑/失败，由本工作流补签
+# 已全部签到时静默（不发邮件），有新签到或异常时发邮件
+name: "兜底补签 14:00"
+
+on:
+  schedule:
+    - cron: "0 6 * * *"   # UTC 06:00 = 北京时间 14:00
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 安装依赖
+        run: pip install requests
+
+      - name: 兜底补签
+        env:
+          SKLAND_CONFIG: ${{ secrets.SKLAND_CONFIG }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_TO: ${{ secrets.SMTP_TO }}
+        run: python main.py --mode backup
