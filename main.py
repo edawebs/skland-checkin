@@ -390,8 +390,8 @@ def load_state() -> dict | None:
 
 def main():
     parser = argparse.ArgumentParser(description="森空岛自动签到")
-    parser.add_argument("--mode", choices=["full", "retry", "check"], default="full",
-                        help="full=主力签到, retry=补签, check=看门狗")
+    parser.add_argument("--mode", choices=["full", "retry", "check", "backup"], default="full",
+                        help="full=主力签到, retry=补签, check=看门狗, backup=兜底补签(14:00)")
     args = parser.parse_args()
 
     config = load_config()
@@ -452,6 +452,28 @@ def main():
             if "❌" in prev:
                 send_mail(f"⚠️ 森空岛签到异常 {today}", prev)
                 sys.exit(1)
+
+    elif args.mode == "backup":
+        # 兜底模式（14:00）：早上 schedule 漏跑时补签；今天已全部签过则静默不打扰
+        print(f"[{today}] 🛟 兜底检查开始")
+        lines = do_checkin(config)
+        save_state(lines)
+        output = "\n".join(lines)
+        print(output)
+
+        if "❌" in output:
+            send_mail(
+                f"⚠️ 森空岛兜底检查异常 {today}",
+                f"兜底时间: {today} {time.strftime('%H:%M:%S')}\n\n{output}",
+            )
+        elif "✅" in output:
+            # 有新的签到成功 → 说明早上的主力签到漏跑了，已兜底补上
+            send_mail(
+                f"🛟 森空岛兜底补签完成 {today}",
+                f"兜底时间: {today} {time.strftime('%H:%M:%S')}\n早上主力签到疑似未执行，已由兜底工作流补签。\n\n{output}",
+            )
+        else:
+            print(f"[{today}] ✅ 今日已全部签到，兜底静默")
 
 
 if __name__ == "__main__":
