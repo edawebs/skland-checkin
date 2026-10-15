@@ -1,9 +1,9 @@
-# 补签 — 每天北京时间 10:10 执行
-name: "补签 10:10"
+# 补签 — 每天北京时间 10:41 执行
+name: "补签 10:41"
 
 on:
   schedule:
-    - cron: "10 2 * * *"   # UTC 02:10 = 北京时间 10:10
+    - cron: '41 2 * * *'   # UTC 02:41 = 北京时间 10:41
   workflow_dispatch:
 
 jobs:
@@ -24,7 +24,7 @@ jobs:
         run: pip install requests
 
       # download-artifact@v4 默认只下载"当前 run"的 artifact，
-      # 必须显式指定 run-id 才能拿到主力签到(08:20)上传的状态文件
+      # 必须显式指定 run-id 才能拿到主力签到(10:41)上传的状态文件
       - name: 获取最近一次主力签到 run_id
         id: last-checkin-run
         env:
