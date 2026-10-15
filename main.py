@@ -20,11 +20,21 @@ import time
 import traceback
 import uuid
 import urllib.parse
+from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 
 import requests
+
+# GitHub Actions runner 时区为 UTC，统一换算为北京时间（UTC+8）后再记录与判断"今天"，
+# 否则凌晨 0-8 点运行时会误判成前一天，触发多余的补签/兜底。
+CST = timezone(timedelta(hours=8))
+
+
+def now_cst():
+    """当前北京时间。状态文件写入与跨天判断必须共用此函数，保持一致。"""
+    return datetime.now(CST)
 
 # ── 路径 ──────────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent
@@ -371,8 +381,9 @@ def do_checkin(config: dict) -> list[str]:
 
 
 def save_state(lines: list[str]):
-    today = time.strftime("%Y-%m-%d")
-    state = {"date": today, "lines": lines, "time": time.strftime("%H:%M:%S")}
+    now = now_cst()
+    today = now.strftime("%Y-%m-%d")
+    state = {"date": today, "lines": lines, "time": now.strftime("%H:%M:%S")}
     with open(STATE_FILE, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False)
 
@@ -395,7 +406,9 @@ def main():
     args = parser.parse_args()
 
     config = load_config()
-    today = time.strftime("%Y-%m-%d")
+    now = now_cst()
+    today = now.strftime("%Y-%m-%d")
+    run_time = now.strftime("%H:%M:%S")
 
     if args.mode == "full":
         print(f"[{today}] 🚀 主力签到开始")
@@ -407,7 +420,7 @@ def main():
         # 每次签到都发邮件报告（成功也提醒，对齐贴吧模式）
         send_mail(
             f"✅ 森空岛签到成功 {today}" if "❌" not in output else f"⚠️ 森空岛签到异常 {today}",
-            f"签到时间: {today} {time.strftime('%H:%M:%S')}\n\n{output}",
+            f"签到时间: {today} {run_time}\n\n{output}",
         )
 
     elif args.mode == "retry":
@@ -423,7 +436,7 @@ def main():
                 # 补签结果也发邮件（成功/失败都提醒）
                 send_mail(
                     f"✅ 森空岛补签成功 {today}" if "❌" not in output else f"⚠️ 森空岛补签异常 {today}",
-                    f"补签时间: {today} {time.strftime('%H:%M:%S')}\n\n{output}",
+                    f"补签时间: {today} {run_time}\n\n{output}",
                 )
             else:
                 print(f"[{today}] ✅ 上午签到全部成功，无需补签")
@@ -436,7 +449,7 @@ def main():
             # 补签结果也发邮件（成功/失败都提醒）
             send_mail(
                 f"✅ 森空岛补签成功 {today}" if "❌" not in output else f"⚠️ 森空岛补签异常 {today}",
-                f"补签时间: {today} {time.strftime('%H:%M:%S')}\n\n{output}",
+                f"补签时间: {today} {run_time}\n\n{output}",
             )
 
     elif args.mode == "check":
@@ -464,13 +477,13 @@ def main():
         if "❌" in output:
             send_mail(
                 f"⚠️ 森空岛兜底检查异常 {today}",
-                f"兜底时间: {today} {time.strftime('%H:%M:%S')}\n\n{output}",
+                f"兜底时间: {today} {run_time}\n\n{output}",
             )
         elif "✅" in output:
             # 有新的签到成功 → 说明早上的主力签到漏跑了，已兜底补上
             send_mail(
                 f"🛟 森空岛兜底补签完成 {today}",
-                f"兜底时间: {today} {time.strftime('%H:%M:%S')}\n早上主力签到疑似未执行，已由兜底工作流补签。\n\n{output}",
+                f"兜底时间: {today} {run_time}\n早上主力签到疑似未执行，已由兜底工作流补签。\n\n{output}",
             )
         else:
             print(f"[{today}] ✅ 今日已全部签到，兜底静默")
